@@ -1,0 +1,55 @@
+{
+  "_comment": "Open architecture: edit this file to change benefit scoring. No code changes needed.",
+  "_comment2": "Pillar names must match Excel sheet names after stripping numeric prefix (e.g. '09_Supplements' → 'supplements').",
+  "weights": {
+    "dementia_prevention": {
+      "cognitive_social": 35,
+      "brief_today": 25,
+      "sleep_recovery": 20,
+      "nutrition": 10,
+      "supplements": 10
+    },
+    "cardiovascular_health": {
+      "brief_today": 40,
+      "nutrition": 30,
+      "sleep_recovery": 15,
+      "supplements": 10,
+      "cognitive_social": 5
+    },
+    "fall_prevention": {
+      "brief_today": 50,
+      "exercise_library": 20,
+      "nutrition": 15,
+      "sleep_recovery": 10,
+      "supplements": 5
+    },
+    "metabolic_health": {
+      "nutrition": 40,
+      "brief_today": 30,
+      "supplements": 15,
+      "sleep_recovery": 10,
+      "cognitive_social": 5
+    },
+    "longevity": {
+      "brief_today": 25,
+      "nutrition": 20,
+      "sleep_recovery": 20,
+      "cognitive_social": 20,
+      "supplements": 15
+    }
+  },
+  "outcome_labels": {
+    "dementia_prevention": "Dementia Prevention",
+    "cardiovascular_health": "Cardiovascular Health",
+    "fall_prevention": "Fall Prevention",
+    "metabolic_health": "Metabolic Health",
+    "longevity": "Longevity"
+  },
+  "outcome_icons": {
+    "dementia_prevention": "brain",
+    "cardiovascular_health": "heart",
+    "fall_prevention": "shield",
+    "metabolic_health": "activity",
+    "longevity": "star"
+  }
+}

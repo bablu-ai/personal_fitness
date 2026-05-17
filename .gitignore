@@ -1,0 +1,18 @@
+# Backend
+backend/venv/
+backend/.env
+backend/longevity.db
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/.pytest_cache/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# General
+.DS_Store
+*.log
