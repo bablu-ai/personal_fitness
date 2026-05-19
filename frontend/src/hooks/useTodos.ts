@@ -16,6 +16,11 @@ export const useTodos = () => {
     queryFn: todosApi.getTodaySummary,
   })
 
+  const necessarySupplementsQuery = useQuery({
+    queryKey: QUERY_KEYS.necessarySupplements,
+    queryFn: todosApi.getNecessarySupplements,
+  })
+
   const toggleMutation = useMutation({
     mutationFn: ({ id, completed }: { id: string; completed: boolean }) =>
       todosApi.update(id, { completed }),
@@ -36,6 +41,7 @@ export const useTodos = () => {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.todaySummary })
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.todayBenefits })
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.necessarySupplements })
     },
   })
 
@@ -50,6 +56,7 @@ export const useTodos = () => {
   return {
     todos,
     todosByPillar,
+    necessarySupplements: necessarySupplementsQuery.data ?? [],
     summary: summaryQuery.data,
     isLoading: todosQuery.isLoading,
     error: todosQuery.error,

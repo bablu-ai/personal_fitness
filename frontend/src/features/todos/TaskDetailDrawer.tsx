@@ -20,12 +20,12 @@ interface Props {
 const BulletText = ({ text, className }: { text: string; className?: string }) => {
   const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean)
   if (lines.length <= 1) {
-    return <p className={cn('text-sm leading-relaxed', className)}>{text}</p>
+    return <p className={cn('text-sm md:text-base leading-relaxed', className)}>{text}</p>
   }
   return (
     <ul className={cn('space-y-1.5', className)}>
       {lines.map((line, i) => (
-        <li key={i} className="flex gap-2 text-sm leading-relaxed">
+        <li key={i} className="flex gap-2 text-sm md:text-base leading-relaxed">
           <span className="text-primary shrink-0 mt-0.5 font-bold">·</span>
           <span>{line.replace(/^[-•*·]\s*/, '')}</span>
         </li>
@@ -38,14 +38,14 @@ const BulletText = ({ text, className }: { text: string; className?: string }) =
 const StepText = ({ text, className }: { text: string; className?: string }) => {
   const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean)
   if (lines.length <= 1) {
-    return <p className={cn('text-sm leading-relaxed', className)}>{text}</p>
+    return <p className={cn('text-sm md:text-base leading-relaxed', className)}>{text}</p>
   }
   const isNumbered = lines[0].match(/^\d+[.)]\s/)
   if (isNumbered) {
     return (
       <ol className={cn('space-y-1.5 list-none', className)}>
         {lines.map((line, i) => (
-          <li key={i} className="flex gap-2.5 text-sm leading-relaxed">
+          <li key={i} className="flex gap-2.5 text-sm md:text-base leading-relaxed">
             <span className="shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-[11px] font-bold flex items-center justify-center mt-0.5">
               {i + 1}
             </span>
@@ -67,8 +67,8 @@ interface SectionProps {
   children: React.ReactNode
 }
 const Section = ({ icon, label, color = 'text-muted-foreground', children }: SectionProps) => (
-  <div className="mb-5">
-    <div className={cn('flex items-center gap-1.5 mb-2 text-xs font-semibold uppercase tracking-wide', color)}>
+  <div className="mb-4">
+    <div className={cn('flex items-center gap-1.5 mb-2 text-xs md:text-[13px] font-semibold uppercase tracking-wide', color)}>
       {icon}
       {label}
     </div>
@@ -85,12 +85,19 @@ const KNOWN_KEYS: Record<string, { label: string; icon: React.ReactNode; style: 
   'common mistakes':     { label: 'Common mistakes',    icon: <AlertTriangle size={11} />, style: 'text-red-600' },
   'week 2 progression':  { label: 'Week 2 progression', icon: <TrendingUp size={11} />,   style: 'text-green-600' },
   'week 2 increase':     { label: 'Week 2 progression', icon: <TrendingUp size={11} />,   style: 'text-green-600' },
+  'week_1':              { label: 'Week 1',             icon: <Target size={11} />,       style: 'text-primary' },
+  'week_2':              { label: 'Week 2',             icon: <TrendingUp size={11} />,   style: 'text-green-600' },
+  'progression':         { label: 'Progression',        icon: <TrendingUp size={11} />,   style: 'text-green-600' },
+  'track':               { label: 'Track',              icon: <Target size={11} />,       style: 'text-primary' },
   'primary muscles':     { label: 'Muscles targeted',   icon: <Dumbbell size={11} />,     style: 'text-blue-600' },
   'muscles targeted':    { label: 'Muscles targeted',   icon: <Dumbbell size={11} />,     style: 'text-blue-600' },
 }
 
 // Keys to suppress from the "additional info" fallback (already shown elsewhere)
-const SUPPRESSED_KEYS = new Set(['category', 'priority', 'week 1 easy start', 'if behind schedule', 'target duration'])
+const SUPPRESSED_KEYS = new Set([
+  'category', 'priority', 'week 1 easy start', 'if behind schedule', 'target duration',
+  'must', 'exercise_names',
+])
 
 const ExtraMetadata = ({ meta }: { meta: Record<string, string> }) => {
   const known: Array<{ key: string; value: string; def: typeof KNOWN_KEYS[string] }> = []
@@ -123,7 +130,7 @@ const ExtraMetadata = ({ meta }: { meta: Record<string, string> }) => {
           <div className="space-y-1.5">
             {rest.map(([k, v]) => (
               <div key={k} className="flex gap-2 text-xs">
-                <span className="text-muted-foreground font-medium shrink-0 min-w-[90px]">{k}:</span>
+                <span className="text-muted-foreground font-medium shrink-0 min-w-[90px] md:min-w-[110px]">{k}:</span>
                 <span className="text-foreground">{v}</span>
               </div>
             ))}
@@ -137,7 +144,7 @@ const ExtraMetadata = ({ meta }: { meta: Record<string, string> }) => {
 // ── Exercise card — one per exercise in a workout block ───────────────────
 
 const ExerciseCard = ({ ex }: { ex: Exercise }) => (
-  <div className="rounded-xl border bg-muted/20 p-3 space-y-2">
+  <div className="rounded-lg border bg-muted/20 p-2.5 space-y-1.5">
     {/* Name + category badge */}
     <div className="flex items-center gap-2 flex-wrap">
       <span className="text-sm font-semibold">{ex.name}</span>
@@ -158,7 +165,7 @@ const ExerciseCard = ({ ex }: { ex: Exercise }) => (
 
     {/* Setup */}
     {ex.setup && (
-      <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+      <div className="flex items-start gap-1.5 text-xs md:text-sm text-muted-foreground">
         <Settings size={10} className="shrink-0 mt-0.5" />
         <span><span className="font-medium">Setup: </span>{ex.setup}</span>
       </div>
@@ -166,7 +173,7 @@ const ExerciseCard = ({ ex }: { ex: Exercise }) => (
 
     {/* Starting position */}
     {ex.starting_position && (
-      <p className="text-xs text-muted-foreground pl-4">{ex.starting_position}</p>
+      <p className="text-xs md:text-sm text-muted-foreground pl-4">{ex.starting_position}</p>
     )}
 
     {/* Step-by-step how-to */}
@@ -268,7 +275,7 @@ const TaskDetailDrawer = ({ templateId, onClose }: Props) => {
         aria-modal="true"
         aria-label="Task detail"
         className={cn(
-          'fixed bottom-0 left-0 right-0 z-50 bg-background rounded-t-2xl shadow-2xl',
+          'fixed bottom-0 left-0 right-0 md:left-1/2 md:-translate-x-1/2 md:w-[620px] lg:w-[680px] z-50 bg-background rounded-t-2xl md:rounded-t-3xl shadow-2xl',
           'transition-transform duration-300 max-h-[85dvh] flex flex-col',
           isOpen ? 'translate-y-0' : 'translate-y-full',
         )}
@@ -295,7 +302,16 @@ const TaskDetailDrawer = ({ templateId, onClose }: Props) => {
                     {detail.pillar.replace(/_/g, ' ')}
                   </span>
                 </div>
-                <h2 className="text-base font-semibold leading-snug">{detail.name}</h2>
+                <div className="flex items-center gap-2">
+                  {detail.name.toLowerCase().startsWith('(must)') && (
+                    <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-amber-800">
+                      Must
+                    </span>
+                  )}
+                  <h2 className="text-base font-semibold leading-snug">
+                    {detail.name.replace(/^\(must\)\s*/i, '')}
+                  </h2>
+                </div>
               </>
             )}
           </div>
@@ -310,7 +326,7 @@ const TaskDetailDrawer = ({ templateId, onClose }: Props) => {
         </div>
 
         {/* Scrollable body */}
-        <div className="overflow-y-auto px-5 pt-4 pb-10 flex-1">
+        <div className="overflow-y-auto px-4 md:px-5 pt-3 pb-8 flex-1">
           {isLoading && (
             <div className="space-y-3">
               {[80, 60, 90, 70].map((w, i) => (
@@ -389,7 +405,7 @@ const TaskDetailDrawer = ({ templateId, onClose }: Props) => {
               {/* Exercises — populated for workout blocks from exercise_library */}
               {detail.exercises.length > 0 && (
                 <Section icon={<Dumbbell size={11} />} label="Exercises" color="text-violet-700">
-                  <div className="space-y-4">
+                  <div className="space-y-2.5">
                     {detail.exercises.map((ex: Exercise, i: number) => (
                       <ExerciseCard key={i} ex={ex} />
                     ))}

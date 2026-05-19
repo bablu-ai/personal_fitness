@@ -4,6 +4,14 @@ const config: Config = {
   darkMode: ['class'],
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
+    screens: {
+      xs:    '360px',  // iPhone SE (360 x 800)
+      sm:    '640px',  // iPhone 12/13 (390 x 844)
+      md:    '768px',  // iPad (768 x 1024)
+      lg:   '1024px',  // iPad Pro (1024 x 1366)
+      xl:   '1280px',  // Desktop (1280 x 720)
+      '2xl': '1536px', // Large Desktop (1536 x 864)
+    },
     extend: {
       colors: {
         border: 'hsl(var(--border))',

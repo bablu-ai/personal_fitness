@@ -10,6 +10,8 @@ interface Props {
 
 const TodoItem = ({ todo, onToggle, onOpenDetail }: Props) => {
   const { template } = todo
+  const isMust = template.name.toLowerCase().startsWith('(must)')
+  const displayName = isMust ? template.name.replace(/^\(must\)\s*/i, '') : template.name
 
   return (
     <div
@@ -47,9 +49,16 @@ const TodoItem = ({ todo, onToggle, onOpenDetail }: Props) => {
         onClick={() => onToggle(todo.id, !todo.completed)}
         className="flex-1 min-w-0 text-left py-2.5 pr-1"
       >
-        <p className={cn('text-sm font-medium leading-snug', todo.completed && 'line-through text-muted-foreground')}>
-          {template.name}
-        </p>
+        <div className="flex items-center gap-1.5 min-w-0">
+          {isMust && (
+            <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-amber-800">
+              Must
+            </span>
+          )}
+          <p className={cn('min-w-0 text-sm font-medium leading-snug', todo.completed && 'line-through text-muted-foreground')}>
+            {displayName}
+          </p>
+        </div>
         {template.description && (
           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{template.description}</p>
         )}

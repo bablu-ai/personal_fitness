@@ -55,10 +55,10 @@ const BriefTodayTimeline = ({ todos, onToggle, onOpenDetail }: Props) => {
   return (
     <div className="space-y-4">
       {sortedHours.map(hour => (
-        <div key={hour} className="flex gap-3">
+        <div key={hour} className="flex gap-2 xs:gap-3 md:gap-4">
           {/* Time gutter */}
-          <div className="w-16 shrink-0 pt-2.5 text-right">
-            <span className="text-[11px] font-medium text-muted-foreground">{hourLabel(hour)}</span>
+          <div className="w-12 xs:w-14 md:w-16 shrink-0 pt-2.5 text-right">
+            <span className="text-[11px] md:text-xs font-medium text-muted-foreground">{hourLabel(hour)}</span>
           </div>
 
           {/* Vertical line + items */}

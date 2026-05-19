@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import TaskDetailDrawer from './TaskDetailDrawer'
+import TaskDetailDrawer from '@/features/todos/TaskDetailDrawer'
 
 vi.mock('@/lib/api', () => ({
   todosApi: {
@@ -25,6 +25,7 @@ vi.mock('@/lib/api', () => ({
       is_reference: false,
       extra_metadata: null,
       related_exercises: [],
+      exercises: [],
     }),
   },
 }))

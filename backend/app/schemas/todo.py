@@ -1,6 +1,6 @@
 import json
 from datetime import date, datetime
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing import Any
 
 
@@ -76,6 +76,18 @@ class TaskDetailOut(TaskTemplateOut):
     exercises: list[Exercise] = []
 
 
+class TodoOverride(BaseModel):
+    """
+    Per-day overlay applied to a single DailyTodo for one date only.
+    Never mutates the linked TaskTemplate / plan. Unknown fields are rejected (422).
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    target_value: str | None = Field(default=None, min_length=1, max_length=200)
+    hidden: bool | None = None
+
+
 class DailyTodoOut(BaseModel):
     id: str
     date: date
@@ -84,14 +96,23 @@ class DailyTodoOut(BaseModel):
     actual_value: str | None
     notes: str | None
     template: TaskTemplateOut
+    # Per-day overlay actually in effect for this date (None when no override set).
+    # name/target_value in `template` already reflect the overlay; this field lets
+    # the UI surface an "edited for today" state. Backward compatible (optional).
+    override: TodoOverride | None = None
 
     model_config = {"from_attributes": True}
 
 
 class TodoUpdateRequest(BaseModel):
-    completed: bool
+    # completed is optional so an override-only PATCH (e.g. rename-for-today)
+    # does not silently clear an existing completion.
+    completed: bool | None = None
     actual_value: str | None = None
     notes: str | None = None
+    # Per-day override. Absent => unchanged. null or {} => clear (revert to template).
+    # Object with fields => merged into existing override_json.
+    override: TodoOverride | None = None
 
 
 class DaySummary(BaseModel):

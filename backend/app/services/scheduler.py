@@ -5,6 +5,7 @@ Schedule strings are parsed flexibly — unknown formats default to daily.
 """
 import uuid
 from datetime import date
+import json
 from sqlalchemy.orm import Session
 from app.db.models import Plan, TaskTemplate, DailyTodo
 
@@ -76,6 +77,19 @@ def _is_scheduled_today(schedule: str | None, today: date) -> bool:
 
     # Unknown schedule → include by default (open architecture: don't silently drop tasks)
     return True
+
+
+def is_necessary_supplement(template: TaskTemplate) -> bool:
+    """Necessary supplements: Active status + category containing B on supplements pillar."""
+    if template.pillar != "supplements":
+        return False
+    try:
+        meta = json.loads(template.extra_metadata or "{}")
+    except ValueError:
+        meta = {}
+    status = str(meta.get("status", "")).strip().lower()
+    category = str(meta.get("category", "")).strip().lower()
+    return status == "active" and "b" in category
 
 
 def generate_todos_for_date(

@@ -1,6 +1,7 @@
 from datetime import date
 import pytest
-from app.services.scheduler import _is_scheduled_today
+import json
+from app.services.scheduler import _is_scheduled_today, is_necessary_supplement
 
 
 @pytest.mark.parametrize("schedule,weekday,expected", [
@@ -25,3 +26,24 @@ def test_schedule_logic(schedule, weekday, expected):
     base = date(2026, 5, 18)  # Monday
     target = base.replace(day=base.day + weekday)
     assert _is_scheduled_today(schedule, target) == expected
+
+
+def test_is_necessary_supplement_active_category_b():
+    class T:
+        pillar = "supplements"
+        extra_metadata = json.dumps({"status": "Active", "category": "B"})
+    assert is_necessary_supplement(T()) is True
+
+
+@pytest.mark.parametrize("pillar,meta", [
+    ("supplements", {"status": "Discuss", "category": "B"}),
+    ("supplements", {"status": "Active", "category": "A"}),
+    ("nutrition", {"status": "Active", "category": "B"}),
+])
+def test_is_necessary_supplement_rejects_non_required_rows(pillar, meta):
+    class T:
+        pass
+    t = T()
+    t.pillar = pillar
+    t.extra_metadata = json.dumps(meta)
+    assert is_necessary_supplement(t) is False

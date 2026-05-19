@@ -21,6 +21,7 @@ export const API_BASE_URL = '/api'
 
 export const QUERY_KEYS = {
   todayTodos:   ['todos', 'today'] as const,
+  necessarySupplements: ['todos', 'supplements', 'necessary'] as const,
   todaySummary: ['todos', 'today', 'summary'] as const,
   todayBenefits:['benefits', 'today'] as const,
   dashDaily:    ['dashboard', 'daily'] as const,

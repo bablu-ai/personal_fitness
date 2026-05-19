@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date
-from sqlalchemy import String, Boolean, DateTime, Date, Text, Integer, ForeignKey, func
+from sqlalchemy import String, Boolean, DateTime, Date, Text, Integer, ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
 
@@ -22,6 +22,10 @@ class Plan(Base):
     rotation_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # Normalized JSON snapshot produced by the AI ingest pipeline — used by agent chat
     plan_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Review lifecycle: draft (under review, not driving todos) | active (approved) | archived (superseded)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="active", server_default="active")
+    # Concurrency guard: bumped on every plan_json write; stale-base saves rejected with 409
+    json_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     task_templates: Mapped[list["TaskTemplate"]] = relationship(back_populates="plan", cascade="all, delete-orphan")
     rotation_days: Mapped[list["RotationDay"]] = relationship(back_populates="plan", cascade="all, delete-orphan")
@@ -59,6 +63,8 @@ class TaskTemplate(Base):
     extra_metadata: Mapped[str | None] = mapped_column(Text)           # JSON catch-all
     # JSON list of IngestedExercise dicts for workout blocks (brief_today Priority/Secondary/Warm-up blocks)
     exercises_json: Mapped[str | None] = mapped_column(Text)
+    # Edit-tracking origin: ingest | user_added | user_edited | agent_fixed
+    origin: Mapped[str] = mapped_column(String, nullable=False, default="ingest", server_default="ingest")
 
     plan: Mapped["Plan"] = relationship(back_populates="task_templates")
     daily_todos: Mapped[list["DailyTodo"]] = relationship(back_populates="template")
@@ -76,6 +82,8 @@ class DailyTodo(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     actual_value: Mapped[str | None] = mapped_column(String)           # what user actually logged
     notes: Mapped[str | None] = mapped_column(Text)
+    # Per-day overlay JSON {"name"?: str, "target_value"?: str, "hidden"?: bool} — overrides template for this date only
+    override_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     template: Mapped["TaskTemplate"] = relationship(back_populates="daily_todos")
 
@@ -168,3 +176,79 @@ class ScreeningRecord(Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
     screening: Mapped["Screening"] = relationship(back_populates="records")
+
+
+# ── Auth ─────────────────────────────────────────────────────────────────────
+
+class User(Base):
+    """Registered user. Phase 1: POC with stub auth. Phase 2: enforce MFA, refresh rotation."""
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    hashed_password: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ── Questionnaire ─────────────────────────────────────────────────────────────
+
+class QuestionnaireSession(Base):
+    """One questionnaire fill-out session per user attempt."""
+    __tablename__ = "questionnaire_sessions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    # TODO[SECURITY]: use real user_id from JWT when Phase 2 auth is active
+    user_id: Mapped[str] = mapped_column(String, nullable=False, default="default", index=True)
+    # values: in_progress | completed | generating | plan_generated | failed
+    status: Mapped[str] = mapped_column(String, nullable=False, default="in_progress")
+    current_question_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    current_section: Mapped[int] = mapped_column(Integer, default=1)
+    completed_count: Mapped[int] = mapped_column(Integer, default=0)
+    total_questions: Mapped[int] = mapped_column(Integer, default=40)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    answers: Mapped[list["QuestionnaireAnswer"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan"
+    )
+    workbooks: Mapped[list["GeneratedWorkbook"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan"
+    )
+
+
+class QuestionnaireAnswer(Base):
+    """One answer per question per session (upsert on question_id)."""
+    __tablename__ = "questionnaire_answers"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(
+        String, ForeignKey("questionnaire_sessions.id"), nullable=False
+    )
+    question_id: Mapped[str] = mapped_column(String, nullable=False)
+    section_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    answer_json: Mapped[str] = mapped_column(Text, nullable=False)
+    answered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("session_id", "question_id"),)
+
+    session: Mapped["QuestionnaireSession"] = relationship(back_populates="answers")
+
+
+class GeneratedWorkbook(Base):
+    """Workbook JSON generated from questionnaire answers, with a short-lived download token."""
+    __tablename__ = "generated_workbooks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(
+        String, ForeignKey("questionnaire_sessions.id"), nullable=False
+    )
+    plan_id: Mapped[str | None] = mapped_column(String, ForeignKey("plans.id"), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    workbook_json: Mapped[str] = mapped_column(Text, nullable=False)
+    xlsx_token: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    session: Mapped["QuestionnaireSession"] = relationship(back_populates="workbooks")

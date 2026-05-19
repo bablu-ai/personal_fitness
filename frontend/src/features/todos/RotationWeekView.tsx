@@ -41,7 +41,7 @@ interface TimeBudgetChipProps { label: string; minutes: string | null }
 const TimeBudgetChip = ({ label, minutes }: TimeBudgetChipProps) => {
   if (!minutes) return null
   return (
-    <div className="flex flex-col items-center bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 min-w-[60px]">
+    <div className="flex flex-col items-center bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 min-w-[52px] xs:min-w-[56px] md:min-w-[64px]">
       <span className="text-[10px] text-muted-foreground font-medium leading-tight text-center">{label}</span>
       <span className="text-sm font-bold text-slate-800">{minutes}<span className="text-[10px] font-normal"> min</span></span>
     </div>
@@ -56,7 +56,7 @@ const ExerciseList = ({ label, value, color }: { label: string; value: string | 
       <p className="text-[10px] font-semibold uppercase tracking-wide opacity-70 mb-1.5">{label}</p>
       <ul className="space-y-1">
         {items.map((item, i) => (
-          <li key={i} className="flex gap-1.5 text-xs font-medium">
+          <li key={i} className="flex gap-1.5 text-xs md:text-sm font-medium leading-relaxed">
             <span className="opacity-50 shrink-0">·</span>
             <span>{item}</span>
           </li>
@@ -143,7 +143,7 @@ const RotationWeekView = () => {
               type="button"
               onClick={() => setSelectedDate(prev => prev === d.calendar_date ? null : d.calendar_date)}
               className={cn(
-                'flex flex-col items-center gap-1 p-2 rounded-xl border text-center transition-all min-h-[80px]',
+                'flex flex-col items-center gap-1 p-1 xs:p-1.5 md:p-2 lg:p-3 rounded-xl border text-center transition-all min-h-[72px] xs:min-h-[80px] md:min-h-[96px] lg:min-h-[108px]',
                 d.is_today
                   ? 'border-primary bg-primary/5 ring-1 ring-primary'
                   : 'border-border hover:border-primary/30 hover:bg-accent/20',
@@ -151,14 +151,14 @@ const RotationWeekView = () => {
                 d.completed && 'bg-green-50 border-green-200',
               )}
             >
-              <span className="text-[10px] font-medium text-muted-foreground">{DAY_ABBR[i]}</span>
-              <span className={cn('text-xs font-bold', d.is_today && 'text-primary')}>
+              <span className="text-[10px] xs:text-[11px] md:text-xs lg:text-sm font-medium xs:font-semibold text-muted-foreground">{DAY_ABBR[i]}</span>
+              <span className={cn('text-xs xs:text-sm md:text-base font-bold', d.is_today && 'text-primary')}>
                 {new Date(d.calendar_date).getDate()}
               </span>
-              <span className="text-[9px] text-muted-foreground leading-tight">
+              <span className="text-[9px] xs:text-[10px] md:text-xs text-muted-foreground leading-tight">
                 D{d.rotation_day_number}
               </span>
-              <span className="text-[9px] leading-tight line-clamp-2 text-center">
+              <span className="text-[9px] xs:text-[10px] md:text-xs leading-tight line-clamp-2 xs:line-clamp-3 md:line-clamp-4 text-center">
                 {d.block_name.length > 10 ? d.block_name.slice(0, 9) + '…' : d.block_name}
               </span>
               {d.completed && <CheckCircle size={10} className="text-green-500 shrink-0" />}
@@ -224,7 +224,7 @@ const RotationWeekView = () => {
                     <TimeBudgetChip label="Secondary" minutes={selected.secondary_min} />
                     <TimeBudgetChip label="Cool-down" minutes={selected.cool_down_min} />
                     {selected.total_min && (
-                      <div className="flex flex-col items-center bg-primary/10 border border-primary/20 rounded-lg px-2 py-1.5 min-w-[60px]">
+                      <div className="flex flex-col items-center bg-primary/10 border border-primary/20 rounded-lg px-2 py-1.5 min-w-[52px] xs:min-w-[56px] md:min-w-[64px]">
                         <span className="text-[10px] text-primary font-medium leading-tight">Total</span>
                         <span className="text-sm font-bold text-primary">
                           {selected.total_min}<span className="text-[10px] font-normal"> min</span>
@@ -308,7 +308,7 @@ const RotationWeekView = () => {
               {/* Workout structure grid */}
               {(selected.warm_up || selected.priority_block || selected.secondary_block ||
                 selected.cardio_steps || selected.cool_down || selected.nutrition_focus) && (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
                   {selected.warm_up && (
                     <DetailChip label="Warm-up" value={selected.warm_up} color="bg-yellow-50 text-yellow-800" />
                   )}

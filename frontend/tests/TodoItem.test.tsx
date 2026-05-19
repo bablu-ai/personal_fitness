@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import TodoItem from './TodoItem'
+import TodoItem from '@/features/todos/TodoItem'
 import type { DailyTodo } from '@/types'
 
 const baseTodo: DailyTodo = {
@@ -83,5 +83,20 @@ describe('TodoItem', () => {
     render(<TodoItem todo={baseTodo} onToggle={vi.fn()} />)
     expect(screen.getByText(/2g/)).toBeInTheDocument()
     expect(screen.getByText(/morning/i)).toBeInTheDocument()
+  })
+
+  it('renders must marker as a compact badge', () => {
+    render(
+      <TodoItem
+        todo={{
+          ...baseTodo,
+          template: { ...baseTodo.template, name: '(must) Upper back' },
+        }}
+        onToggle={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('Must')).toBeInTheDocument()
+    expect(screen.getByText('Upper back')).toBeInTheDocument()
+    expect(screen.queryByText('(must) Upper back')).not.toBeInTheDocument()
   })
 })

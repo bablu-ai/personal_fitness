@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import BriefTodayTimeline from './BriefTodayTimeline'
+import BriefTodayTimeline from '@/features/todos/BriefTodayTimeline'
 import type { DailyTodo } from '@/types'
 
 const makeTodo = (id: string, name: string, timing: string | null): DailyTodo => ({

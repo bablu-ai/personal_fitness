@@ -18,6 +18,7 @@ interface Tab {
 
 const EXERCISE_TAB: Tab = { id: 'exercise', label: 'Exercise', emoji: '🏋️' }
 const ALL_TAB:      Tab = { id: 'all',      label: 'All',      emoji: '📋' }
+const SUPPLEMENTS_TAB: Tab = { id: 'supplements_necessary', label: 'Supps TODO', emoji: '💊' }
 const REFERENCE_TAB: Tab = { id: 'reference', label: 'Reference', emoji: '📚' }
 
 const pillarToTab = (pillar: string): Tab => {
@@ -30,13 +31,14 @@ const pillarToTab = (pillar: string): Tab => {
 }
 
 const TodayPage = () => {
-  const { todosByPillar, summary, isLoading, error, toggleTodo } = useTodos()
+  const { todosByPillar, necessarySupplements, summary, isLoading, error, toggleTodo } = useTodos()
   const today = formatDate(new Date().toISOString())
 
   const pillars = Object.keys(todosByPillar)
   const tabs: Tab[] = [
     ALL_TAB,
     ...pillars.map(pillarToTab),
+    SUPPLEMENTS_TAB,
     EXERCISE_TAB,
     REFERENCE_TAB,
   ]
@@ -63,6 +65,7 @@ const TodayPage = () => {
   }
 
   const activePillar = activeTab !== 'all' && activeTab !== 'exercise' && activeTab !== 'reference'
+    && activeTab !== 'supplements_necessary'
     ? activeTab
     : null
 
@@ -75,8 +78,8 @@ const TodayPage = () => {
         <p className="text-xs text-muted-foreground uppercase tracking-wide">{today}</p>
         {summary && (
           <>
-            <p className="text-2xl font-bold text-primary mt-1">{summary.completion_pct}%</p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-2xl xs:text-3xl md:text-4xl font-bold text-primary mt-1">{summary.completion_pct}%</p>
+            <p className="text-sm md:text-base text-muted-foreground">
               {summary.completed} of {summary.total} tasks complete
             </p>
             <div className="h-2 bg-muted rounded-full mt-2">
@@ -97,7 +100,7 @@ const TodayPage = () => {
             type="button"
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all shrink-0',
+              'flex items-center gap-1.5 px-2.5 py-1.5 xs:px-3 md:px-3.5 md:py-2 rounded-full text-[11px] xs:text-xs md:text-[13px] font-medium whitespace-nowrap transition-all shrink-0',
               activeTab === tab.id
                 ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground',
@@ -111,6 +114,24 @@ const TodayPage = () => {
 
       {/* Exercise — weekly rotation grid */}
       {activeTab === 'exercise' && <RotationWeekView />}
+
+      {/* Necessary supplements — uses the same persisted DailyTodo rows */}
+      {activeTab === 'supplements_necessary' && (
+        necessarySupplements.length > 0 ? (
+          <PillarSection
+            pillar="supplements"
+            todos={necessarySupplements}
+            onToggle={toggleTodo}
+            onOpenDetail={setDetailTemplateId}
+            defaultOpen
+          />
+        ) : (
+          <div className="text-center py-16 text-muted-foreground">
+            <p className="text-4xl mb-3">💊</p>
+            <p className="font-medium">No necessary supplements for today</p>
+          </div>
+        )
+      )}
 
       {/* Reference — read-only reference items */}
       {activeTab === 'reference' && <ReferenceTab />}

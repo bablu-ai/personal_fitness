@@ -64,7 +64,7 @@ const UploadPage = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold">Upload Plan</h2>
+        <h2 className="text-base md:text-lg font-semibold">Upload Plan</h2>
         <p className="text-sm text-muted-foreground mt-1">
           Import your longevity workbook. A new upload replaces the current plan.
         </p>
@@ -76,7 +76,7 @@ const UploadPage = () => {
           type="button"
           onClick={() => { setTab('ai'); reset() }}
           className={cn(
-            'flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors',
+            'flex-1 flex items-center justify-center gap-2 py-2 xs:py-2.5 md:py-3 text-sm md:text-base font-medium transition-colors',
             tab === 'ai'
               ? 'bg-primary text-primary-foreground'
               : 'bg-background text-muted-foreground hover:bg-accent/30',
@@ -89,7 +89,7 @@ const UploadPage = () => {
           type="button"
           onClick={() => { setTab('classic'); reset() }}
           className={cn(
-            'flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors border-l border-border',
+            'flex-1 flex items-center justify-center gap-2 py-2 xs:py-2.5 md:py-3 text-sm md:text-base font-medium transition-colors border-l border-border',
             tab === 'classic'
               ? 'bg-primary text-primary-foreground'
               : 'bg-background text-muted-foreground hover:bg-accent/30',
@@ -130,7 +130,7 @@ const UploadPage = () => {
         }}
         disabled={isProcessing}
         className={cn(
-          'w-full border-2 border-dashed rounded-xl p-10 flex flex-col items-center gap-3 transition-colors',
+          'w-full border-2 border-dashed rounded-xl p-6 xs:p-8 md:p-10 lg:p-12 flex flex-col items-center gap-3 transition-colors',
           isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-accent/20',
           isProcessing && 'opacity-50 cursor-wait',
         )}

@@ -24,19 +24,19 @@ const BenefitScoreCards = ({ scores }: Props) => {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
       {scores.map(score => {
         const Icon = ICON_MAP[score.icon ?? ''] ?? Zap
         const pct = score.score_pct
 
         return (
-          <div key={score.outcome} className="rounded-xl border bg-card p-3">
+          <div key={score.outcome} className="rounded-xl border bg-card p-3 md:p-4">
             <div className="flex items-center gap-2 mb-2">
               <Icon size={16} className="text-primary flex-shrink-0" />
               <span className="text-xs font-medium text-foreground leading-tight">{score.label}</span>
             </div>
             <div className="flex items-end justify-between">
-              <span className={cn('text-2xl font-bold', pct >= 80 ? 'text-green-600' : pct >= 50 ? 'text-yellow-600' : 'text-red-500')}>
+              <span className={cn('text-2xl md:text-3xl font-bold', pct >= 80 ? 'text-green-600' : pct >= 50 ? 'text-yellow-600' : 'text-red-500')}>
                 {pct}%
               </span>
             </div>

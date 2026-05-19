@@ -7,7 +7,7 @@ from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from dotenv import load_dotenv
 from alembic.config import Config
 from alembic import command
-from app.routers import upload, todos, dashboard, benefits, agent, rotation, screenings
+from app.routers import upload, todos, dashboard, benefits, agent, rotation, screenings, auth, questionnaire, plan_edit
 
 load_dotenv(override=True)  # .env values take precedence over system env vars
 
@@ -20,7 +20,8 @@ def _run_migrations() -> None:
 
 # Disable built-in docs so we can serve Swagger UI from local static files
 # (avoids CDN dependency on cdn.jsdelivr.net which may be blocked on some networks)
-_run_migrations()
+if not os.getenv("TESTING"):
+    _run_migrations()
 
 app = FastAPI(
     title="Longevity Daily-Action API",
@@ -76,6 +77,9 @@ app.include_router(benefits.router, prefix="/api", tags=["benefits"])
 app.include_router(agent.router, prefix="/api", tags=["agent"])
 app.include_router(rotation.router, prefix="/api", tags=["rotation"])
 app.include_router(screenings.router, prefix="/api", tags=["screenings"])
+app.include_router(auth.router, prefix="/api", tags=["auth"])
+app.include_router(questionnaire.router, prefix="/api", tags=["questionnaire"])
+app.include_router(plan_edit.router, prefix="/api", tags=["plan-edit"])
 
 
 @app.get("/api/health")

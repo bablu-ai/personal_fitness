@@ -15,9 +15,13 @@ import io
 import json
 import os
 import re
+import urllib.parse
 import uuid
 from datetime import date, timedelta
-from typing import BinaryIO
+from typing import TYPE_CHECKING, BinaryIO
+
+if TYPE_CHECKING:
+    from langchain_openai import ChatOpenAI
 
 import openpyxl
 from pydantic import BaseModel, Field
@@ -71,6 +75,10 @@ class IngestedTask(BaseModel):
     )
     benefit_tags: str | None = Field(None, description="Health benefits, comma-separated.")
     source_key: str | None = Field(None, description="Source reference key.")
+    extra_metadata: dict[str, str] | None = Field(
+        None,
+        description="Structured catch-all fields copied from deterministic Excel readers.",
+    )
     is_reference: bool = Field(
         False,
         description=(
@@ -200,13 +208,37 @@ def extract_json_text(file: BinaryIO) -> str:
 
 # ── Exercise library direct reader (no LLM) ───────────────────────────────
 
+# Matches =HYPERLINK("url", ...) formula so we can extract the URL when data_only caches
+# the display text instead of the formula string.
+_HYPERLINK_FORMULA_RE = re.compile(r'=HYPERLINK\s*\(\s*"([^"]+)"', re.I)
+
+
+def _to_search_url(value: str | None, base_url: str) -> str | None:
+    """Return value unchanged if it is already a URL; otherwise build a search URL from the text."""
+    if not value:
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    if v.lower().startswith('http'):
+        return v
+    return base_url + urllib.parse.quote_plus(v)
+
+
 def _read_exercise_library(file_content: bytes) -> dict[str, dict]:
     """
     Read the exercise_library sheet directly from the Excel file.
     Returns a lookup dict keyed by lowercase exercise name with full detail fields.
-    This is used for programmatic cross-referencing — no LLM needed.
+
+    Loaded without read_only so that cell.hyperlink is accessible — the YouTube and
+    GIF columns store the actual URL as an Excel hyperlink whose display text is just
+    the column header (e.g. "YouTube Demo Search").  read_only=True silently drops all
+    hyperlink metadata, leaving only the display text.
     """
-    wb = openpyxl.load_workbook(io.BytesIO(file_content), read_only=True, data_only=True)
+    # data_only=False keeps formula strings (e.g. =HYPERLINK("url","text")) so the
+    # regex in _cell_link can extract the real URL. data_only=True would replace the
+    # formula with the cached display text ("YouTube demo search"), losing the URL.
+    wb = openpyxl.load_workbook(io.BytesIO(file_content), data_only=False)
     library: dict[str, dict] = {}
 
     for sheet_name in wb.sheetnames:
@@ -214,16 +246,17 @@ def _read_exercise_library(file_content: bytes) -> dict[str, dict]:
             continue
 
         ws = wb[sheet_name]
-        rows = list(ws.iter_rows(values_only=True))
+        # Keep cell objects (not values_only) so we can read .hyperlink
+        rows = list(ws.iter_rows(values_only=False))
 
-        # Find header row
+        # Find header row (densest row in first 15)
         best_idx, best_count = 0, 0
         for i, row in enumerate(rows[:15]):
-            count = sum(1 for c in row if c is not None)
+            count = sum(1 for c in row if c.value is not None)
             if count > best_count:
                 best_count, best_idx = count, i
 
-        header = [str(c).strip().lower() if c is not None else '' for c in rows[best_idx]]
+        header = [str(c.value).strip().lower() if c.value is not None else '' for c in rows[best_idx]]
 
         def col_idx(keyword: str) -> int | None:
             for i, h in enumerate(header):
@@ -251,15 +284,44 @@ def _read_exercise_library(file_content: bytes) -> dict[str, dict]:
 
         def _cell(row: tuple, key: str) -> str | None:
             i = idx.get(key)
-            if i is None or i >= len(row) or row[i] is None:
+            if i is None or i >= len(row):
                 return None
-            v = str(row[i]).strip()
+            cell = row[i]
+            if cell.value is None:
+                return None
+            v = str(cell.value).strip()
+            return v if v else None
+
+        def _cell_link(row: tuple, key: str) -> str | None:
+            """Read a link column: hyperlink target → HYPERLINK formula → raw cell value."""
+            i = idx.get(key)
+            if i is None or i >= len(row):
+                return None
+            cell = row[i]
+            # 1. Actual cell hyperlink (Insert Hyperlink / openpyxl relationship)
+            if cell.hyperlink and cell.hyperlink.target:
+                v = cell.hyperlink.target.strip()
+                return v or None
+            # 2. =HYPERLINK("url", "text") formula (data_only gives cached display text,
+            #    but without data_only we'd see the formula — handle both)
+            if isinstance(cell.value, str):
+                m = _HYPERLINK_FORMULA_RE.match(cell.value.strip())
+                if m:
+                    v = m.group(1).strip()
+                    return v or None
+            # 3. Plain cell value — could be a URL or a search-term string
+            if cell.value is None:
+                return None
+            v = str(cell.value).strip()
             return v if v else None
 
         for row in rows[best_idx + 1:]:
-            if not row or idx['name'] >= len(row) or row[idx['name']] is None:
+            name_i = idx['name']
+            if not any(c.value is not None for c in row):
                 continue
-            name = str(row[idx['name']]).strip()
+            if name_i is None or name_i >= len(row) or row[name_i].value is None:
+                continue
+            name = str(row[name_i].value).strip()
             if not name:
                 continue
             library[name.lower()] = {
@@ -273,12 +335,272 @@ def _read_exercise_library(file_content: bytes) -> dict[str, dict]:
                 'week1_dosage':     _cell(row, 'week1_dosage'),
                 'safety_notes':     _cell(row, 'safety_notes'),
                 'why_it_matters':   _cell(row, 'why_it_matters'),
-                'video_link':       _cell(row, 'video_link'),
-                'gif_link':         _cell(row, 'gif_link'),
+                'video_link': _to_search_url(
+                    _cell_link(row, 'video_link'),
+                    'https://www.youtube.com/results?search_query=',
+                ),
+                'gif_link': _to_search_url(
+                    _cell_link(row, 'gif_link'),
+                    'https://giphy.com/search/',
+                ),
             }
         break  # only process first matching sheet
 
     return library
+
+
+def _clean_cell_text(value: object | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return re.sub(r'^[•*\-\s]+', '', text).strip() or None
+
+
+def _read_brief_today_from_excel(file_content: bytes) -> list[IngestedTask]:
+    """Parse the v5 02_Brief_Today two-table layout directly from Excel."""
+    wb = openpyxl.load_workbook(io.BytesIO(file_content), read_only=True, data_only=True)
+
+    ws = None
+    for sheet_name in wb.sheetnames:
+        if _normalize_pillar(sheet_name) == 'brief_today':
+            ws = wb[sheet_name]
+            break
+    if ws is None:
+        return []
+
+    rows = list(ws.iter_rows(values_only=True))
+    tasks: list[IngestedTask] = []
+
+    def row_text(row: tuple) -> list[str]:
+        return [str(c).strip() if c is not None else '' for c in row]
+
+    def find_header(required: list[str], start_at: int = 0) -> int | None:
+        for i, row in enumerate(rows[start_at:], start=start_at):
+            lowered = [c.lower() for c in row_text(row)]
+            if all(any(req in cell for cell in lowered) for req in required):
+                return i
+        return None
+
+    def col_map(header_idx: int) -> dict[str, int]:
+        header = row_text(rows[header_idx])
+        return {h.lower(): i for i, h in enumerate(header) if h}
+
+    def cell(row: tuple, columns: dict[str, int], name: str) -> str | None:
+        idx = columns.get(name.lower())
+        if idx is None or idx >= len(row):
+            return None
+        return _clean_cell_text(row[idx])
+
+    main_header_idx = find_header(['start time', 'exercise 1', 'dose'])
+    if main_header_idx is not None:
+        columns = col_map(main_header_idx)
+        for row in rows[main_header_idx + 1:]:
+            values = row_text(row)
+            first = values[0].lower() if values else ''
+            if not any(values):
+                continue
+            if 'answer to timing question' in first or 'non-negotiable' in first:
+                break
+
+            start = cell(row, columns, 'start time')
+            end = cell(row, columns, 'end time')
+            dose = cell(row, columns, 'dose / target')
+            exercises = [
+                ex for ex in (
+                    cell(row, columns, 'exercise 1'),
+                    cell(row, columns, 'exercise 2'),
+                    cell(row, columns, 'exercise 3'),
+                )
+                if ex
+            ]
+            if not (start or end or dose or exercises):
+                continue
+
+            name = ' + '.join(exercises) if exercises else 'Training log'
+            meta: dict[str, str] = {}
+            if exercises:
+                meta['exercise_names'] = '; '.join(exercises)
+            progression = cell(row, columns, 'progression')
+            notes = cell(row, columns, 'notes')
+            if progression:
+                meta['progression'] = progression
+            if notes:
+                meta['notes'] = notes
+
+            tasks.append(IngestedTask(
+                pillar='brief_today',
+                name=name,
+                description=cell(row, columns, 'why it matters'),
+                schedule='daily',
+                timing='-'.join(part for part in (start, end) if part),
+                target_value=dose,
+                extra_metadata=meta or None,
+                is_reference=False,
+            ))
+
+    minimums_header_idx = find_header(['pillar', 'minimum', 'week 1'])
+    if minimums_header_idx is not None:
+        columns = col_map(minimums_header_idx)
+        for row in rows[minimums_header_idx + 1:]:
+            pillar = cell(row, columns, 'pillar')
+            minimum = cell(row, columns, 'minimum')
+            if not pillar or not minimum:
+                continue
+            meta: dict[str, str] = {'must': 'true'}
+            for source, target in (
+                ('week 1', 'week_1'),
+                ('week 2', 'week_2'),
+                ('track', 'track'),
+            ):
+                value = cell(row, columns, source)
+                if value:
+                    meta[target] = value
+            notes = cell(row, columns, 'notes')
+
+            tasks.append(IngestedTask(
+                pillar='brief_today',
+                name=f'(must) {pillar}',
+                description=notes,
+                schedule='weekly',
+                target_value=minimum,
+                how_to=meta.get('week_1'),
+                extra_metadata=meta,
+                is_reference=False,
+            ))
+
+    return tasks
+
+
+def _normalize_supplement_schedule(frequency: str | None) -> str:
+    """Map supplements frequency text into scheduler-friendly values."""
+    if not frequency:
+        return "daily"
+    f = frequency.strip().lower()
+    if "daily" in f:
+        return "daily"
+    if "alternate day" in f or "eod" in f or "every other day" in f:
+        return "every other day"
+    if "2×/wk" in f or "2x/week" in f or "2x/wk" in f:
+        return "2x/week"
+    if "only if prescribed" in f or "specialist" in f:
+        return "only if prescribed"
+    if "as needed" in f:
+        return "as needed"
+    if "cycle" in f or "on / off" in f or "on/off" in f:
+        return "cycle"
+    return frequency.strip()
+
+
+def _read_supplements_from_excel(file_content: bytes) -> list[IngestedTask]:
+    """Parse 09_Supplements directly so status/category and stop rules are deterministic."""
+    wb = openpyxl.load_workbook(io.BytesIO(file_content), read_only=True, data_only=True)
+
+    ws = None
+    for sheet_name in wb.sheetnames:
+        if _normalize_pillar(sheet_name) == 'supplements':
+            ws = wb[sheet_name]
+            break
+    if ws is None:
+        return []
+
+    rows = list(ws.iter_rows(values_only=True))
+    tasks: list[IngestedTask] = []
+
+    def row_text(row: tuple) -> list[str]:
+        return [str(c).strip() if c is not None else '' for c in row]
+
+    def find_header(required: list[str]) -> int | None:
+        for i, row in enumerate(rows[:20]):
+            lowered = [c.lower() for c in row_text(row)]
+            if all(any(req in cell for cell in lowered) for req in required):
+                return i
+        return None
+
+    header_idx = find_header(['supplement', 'status', 'dose', 'frequency'])
+    if header_idx is None:
+        return []
+
+    header = [h.lower() for h in row_text(rows[header_idx])]
+
+    def _col(keyword: str) -> int | None:
+        for i, h in enumerate(header):
+            if keyword in h:
+                return i
+        return None
+
+    col_name = _col('supplement')
+    col_cat = _col('cat')
+    col_status = _col('status')
+    col_dose = _col('dose')
+    col_frequency = _col('frequency')
+    col_timing = _col('timing')
+    col_trigger = _col('trigger marker')
+    col_skip = _col('skip if')
+    col_stop = _col('stop rule')
+    col_combine = _col('do not combine')
+    col_why = _col('why')
+    col_evidence = _col('evidence')
+    col_source = _col('source key')
+
+    def _cell(row: tuple, col: int | None) -> str | None:
+        if col is None or col >= len(row):
+            return None
+        return _clean_cell_text(row[col])
+
+    for row in rows[header_idx + 1:]:
+        name = _cell(row, col_name)
+        status = _cell(row, col_status)
+        if not name or not status:
+            continue
+
+        # stop at other sections (stacking rules / algorithm) where status column is not task status
+        if status.lower() not in {'active', 'discuss', 'caution', 'avoid', 'deprioritize', 'optional', 'specialist only'}:
+            continue
+
+        category = _cell(row, col_cat)
+        dose = _cell(row, col_dose)
+        frequency = _cell(row, col_frequency)
+        timing = _cell(row, col_timing)
+        trigger = _cell(row, col_trigger)
+        skip_if = _cell(row, col_skip)
+        stop_rule = _cell(row, col_stop)
+        do_not_combine = _cell(row, col_combine)
+        why = _cell(row, col_why)
+        evidence = _cell(row, col_evidence)
+        source_key = _cell(row, col_source)
+
+        meta: dict[str, str] = {'status': status}
+        if category:
+            meta['category'] = category
+        if trigger:
+            meta['trigger_marker'] = trigger
+        if skip_if:
+            meta['skip_if'] = skip_if
+        if stop_rule:
+            meta['stop_rule'] = stop_rule
+        if do_not_combine:
+            meta['do_not_combine_with'] = do_not_combine
+        if evidence:
+            meta['evidence'] = evidence
+
+        how_to_parts = [p for p in (skip_if, stop_rule, do_not_combine) if p]
+
+        tasks.append(IngestedTask(
+            pillar='supplements',
+            name=name,
+            description=why,
+            schedule=_normalize_supplement_schedule(frequency),
+            timing=timing,
+            target_value=dose,
+            how_to='\n'.join(how_to_parts) if how_to_parts else None,
+            source_key=source_key,
+            extra_metadata=meta,
+            is_reference=False,
+        ))
+
+    return tasks
 
 
 def _find_exercise(name: str, library: dict[str, dict]) -> dict | None:
@@ -338,7 +660,7 @@ def _find_exercises_for_block(block: TaskTemplate, library: dict[str, dict]) -> 
     exercises: list[dict] = []
 
     def _add_candidate(candidate: str) -> None:
-        candidate = candidate.strip()
+        candidate = _clean_cell_text(candidate) or ''
         # Too short or pure dosage like "1×20–30" or "sec" — skip
         if len(candidate) <= 3:
             return
@@ -349,7 +671,22 @@ def _find_exercises_for_block(block: TaskTemplate, library: dict[str, dict]) -> 
             seen.add(data['name'])
             exercises.append(data)
 
-    # Source 1 — target_value (Week 1 easy start column)
+    # Source 0 — v5 brief_today Exercise 1/2/3 columns captured in metadata.
+    if block.extra_metadata:
+        try:
+            meta = json.loads(block.extra_metadata)
+        except ValueError:
+            meta = {}
+        if isinstance(meta, dict):
+            explicit = meta.get('exercise_names')
+            if isinstance(explicit, str):
+                for part in re.split(r';|,|\band\b|\bor\b', explicit):
+                    _add_candidate(part)
+            for key, value in meta.items():
+                if str(key).lower().startswith('exercise') and isinstance(value, str):
+                    _add_candidate(value)
+
+    # Source 1 — target_value (legacy Week 1 easy start column)
     # Split on comma/and/or. Also split "/" when both sides look like exercise names
     # (e.g. "dead bug/bird dog") but NOT when "/" is a unit separator ("sec/side").
     if block.target_value:
@@ -803,7 +1140,7 @@ def _save_tasks(db: Session, plan_id: str, user_id: str, tasks: list[IngestedTas
             benefit_tags=t.benefit_tags,
             source_key=t.source_key,
             is_reference=t.is_reference,
-            extra_metadata=json.dumps({}),
+            extra_metadata=json.dumps(t.extra_metadata or {}),
         ))
     return len(tasks)
 
@@ -879,6 +1216,240 @@ def prefill_todos(db: Session, plan_id: str, user_id: str) -> int:
     return count
 
 
+# ── Questionnaire-driven ingest (no LLM, no xlsx upload) ─────────────────
+
+def ingest_from_workbook_json(
+    workbook_json: dict,
+    db: Session,
+    user_id: str = DEFAULT_USER_ID,
+) -> dict:
+    """
+    Create a Plan + TaskTemplates + RotationDays + Screenings + DailyTodos from
+    questionnaire-generated workbook_json. No LLM is needed — all data is deterministic.
+
+    Deactivates any existing active plans for *user_id* before creating the new one.
+    Returns {"plan_id": str, "plan_name": str}.
+    """
+    profile = workbook_json.get("user_profile", {})
+    plan_name = f"{profile.get('name', 'User')}'s Longevity Plan"
+
+    # Recover rotation_start_date from the current active plan before wiping it.
+    # This preserves the existing rotation cycle position so the user's weekly
+    # rotation day count is not reset just because they regenerated their plan.
+    prev_plan = (
+        db.query(Plan)
+        .filter(Plan.user_id == user_id, Plan.is_active == True)  # noqa: E712
+        .order_by(Plan.uploaded_at.desc())
+        .first()
+    )
+    prev_rotation_start = prev_plan.rotation_start_date if prev_plan else None
+
+    # Delete stale DailyTodo rows before creating the new plan.
+    # generate_todos_for_date checks for existing DailyTodos FIRST and returns them
+    # immediately — so simply deactivating the old plan is not enough; stale rows
+    # pointing at old TaskTemplate IDs would keep leaking through.
+    db.query(DailyTodo).filter(DailyTodo.user_id == user_id).delete()
+
+    # Deactivate existing plans so only the new plan is marked is_active=True.
+    db.query(Plan).filter(
+        Plan.user_id == user_id, Plan.is_active == True  # noqa: E712
+    ).update({"is_active": False})
+    db.flush()
+
+    plan = Plan(
+        name=plan_name,
+        user_id=user_id,
+        plan_json=json.dumps(workbook_json),
+        is_active=False,
+        status="draft",
+        rotation_start_date=prev_rotation_start,
+    )
+    db.add(plan)
+    db.flush()  # populate plan.id before relationships
+
+    # TaskTemplates
+    for task_data in workbook_json.get("tasks", []):
+        db.add(TaskTemplate(
+            plan_id=plan.id,
+            user_id=user_id,
+            pillar=task_data.get("pillar", "general"),
+            name=task_data.get("name", ""),
+            description=task_data.get("description"),
+            schedule=task_data.get("schedule"),
+            timing=task_data.get("timing"),
+            target_value=task_data.get("target_value"),
+            benefit_tags=task_data.get("benefit_tags"),
+            source_key=task_data.get("source_key"),
+            safety_notes=task_data.get("safety_notes"),
+            how_to=task_data.get("how_to"),
+            why_mechanism=task_data.get("why_mechanism"),
+            is_reference=task_data.get("is_reference", False),
+        ))
+
+    # RotationDays
+    for rd_data in workbook_json.get("rotation_days", []):
+        db.add(RotationDay(
+            plan_id=plan.id,
+            user_id=user_id,
+            day_number=rd_data.get("day_number", 1),
+            week_number=rd_data.get("week_number"),
+            block_name=rd_data.get("block_name", ""),
+            morning_time=rd_data.get("morning_time"),
+            warm_up_min=rd_data.get("warm_up_min"),
+            upper_back_core_min=rd_data.get("upper_back_core_min"),
+            secondary_min=rd_data.get("secondary_min"),
+            cool_down_min=rd_data.get("cool_down_min"),
+            total_min=rd_data.get("total_min"),
+            fits_60=rd_data.get("fits_60"),
+            priority_exercises=rd_data.get("priority_exercises"),
+            secondary_exercises=rd_data.get("secondary_exercises"),
+            week_rule=rd_data.get("week_rule"),
+        ))
+
+    # Screenings
+    for sc_data in workbook_json.get("screenings", []):
+        db.add(Screening(
+            plan_id=plan.id,
+            user_id=user_id,
+            pillar=sc_data.get("pillar", "screenings_safety"),
+            name=sc_data.get("name", ""),
+            description=sc_data.get("description"),
+            frequency_months=sc_data.get("frequency_months"),
+            target_value=sc_data.get("target_value"),
+        ))
+
+    db.flush()
+
+    # Pre-generate DailyTodo rows for next 30 days (matches run_ingest behaviour)
+    prefill_todos(db, plan.id, user_id)
+
+    db.commit()
+    db.refresh(plan)
+    return {"plan_id": plan.id, "plan_name": plan_name}
+
+
+def _loads_or(raw: str | None, fallback: object) -> object:
+    """Parse a stored JSON string; return *fallback* on None/empty/invalid JSON."""
+    if not raw:
+        return fallback
+    try:
+        return json.loads(raw)
+    except (ValueError, TypeError):
+        return fallback
+
+
+def _plan_to_json(db: Session, plan_id: str) -> dict:
+    """
+    Serialize the already-persisted DB rows for *plan_id* back into the same
+    dict shape ``ingest_from_workbook_json`` consumes, so uploaded plans get a
+    lossless canonical ``plan_json`` (single source of truth for edit/review).
+
+    Pure and deterministic: rows are ordered by primary key so repeated calls
+    produce identical output. ``extra_metadata`` / ``exercises_json`` are parsed
+    back into structures (dict / list) rather than left as raw strings.
+
+    MODIFY_WORKSHEET_PLAN_FINAL §4.1 / §6. The DB ``status`` column is NOT read
+    or written here — only the inert ``plan_status`` JSON field is emitted.
+    """
+    plan = db.query(Plan).filter(Plan.id == plan_id).one()
+
+    tasks = (
+        db.query(TaskTemplate)
+        .filter(TaskTemplate.plan_id == plan_id)
+        .order_by(TaskTemplate.id)
+        .all()
+    )
+    rotation_days = (
+        db.query(RotationDay)
+        .filter(RotationDay.plan_id == plan_id)
+        .order_by(RotationDay.day_number, RotationDay.id)
+        .all()
+    )
+    screenings = (
+        db.query(Screening)
+        .filter(Screening.plan_id == plan_id)
+        .order_by(Screening.id)
+        .all()
+    )
+
+    tasks_json = [
+        {
+            "task_id": t.id,
+            "pillar": t.pillar,
+            "name": t.name,
+            "description": t.description,
+            "schedule": t.schedule,
+            "timing": t.timing,
+            "target_value": t.target_value,
+            "unit": t.unit,
+            "benefit_tags": t.benefit_tags,
+            "source_key": t.source_key,
+            "link": t.link,
+            "video_link": t.video_link,
+            "safety_notes": t.safety_notes,
+            "how_to": t.how_to,
+            "why_mechanism": t.why_mechanism,
+            "is_reference": t.is_reference,
+            "extra_metadata": _loads_or(t.extra_metadata, {}),
+            "exercises_json": _loads_or(t.exercises_json, []),
+        }
+        for t in tasks
+    ]
+
+    rotation_json = [
+        {
+            "day_number": rd.day_number,
+            "week_number": rd.week_number,
+            "block_name": rd.block_name,
+            "warm_up": rd.warm_up,
+            "priority_block": rd.priority_block,
+            "secondary_block": rd.secondary_block,
+            "cardio_steps": rd.cardio_steps,
+            "cool_down": rd.cool_down,
+            "nutrition_focus": rd.nutrition_focus,
+            "intensity_cap": rd.intensity_cap,
+            "source_key": rd.source_key,
+            "sets": rd.sets,
+            "reps": rd.reps,
+            "duration": rd.duration,
+            "notes": rd.notes,
+            "morning_time": rd.morning_time,
+            "warm_up_min": rd.warm_up_min,
+            "upper_back_core_min": rd.upper_back_core_min,
+            "secondary_min": rd.secondary_min,
+            "cool_down_min": rd.cool_down_min,
+            "total_min": rd.total_min,
+            "fits_60": rd.fits_60,
+            "priority_exercises": rd.priority_exercises,
+            "secondary_exercises": rd.secondary_exercises,
+            "week_rule": rd.week_rule,
+            "extra_metadata": _loads_or(rd.extra_metadata, {}),
+        }
+        for rd in rotation_days
+    ]
+
+    screenings_json = [
+        {
+            "pillar": sc.pillar,
+            "name": sc.name,
+            "description": sc.description,
+            "frequency_months": sc.frequency_months,
+            "target_value": sc.target_value,
+        }
+        for sc in screenings
+    ]
+
+    return {
+        "format_version": "upload_v2",
+        "plan_status": "draft",
+        "review": {"auto_removed": [], "flags": [], "advisor_notes": []},
+        "user_profile": {"name": plan.name},
+        "tasks": tasks_json,
+        "rotation_days": rotation_json,
+        "screenings": screenings_json,
+    }
+
+
 # ── Public entry point ────────────────────────────────────────────────────
 
 class IngestResult(BaseModel):
@@ -929,6 +1500,16 @@ def run_ingest(
         llm = _make_llm()
         sheet_texts = _extract_sheet_texts(file_content)
         for pillar, sheet_text in sheet_texts.items():
+            if pillar == 'brief_today':
+                tasks = _read_brief_today_from_excel(file_content)
+                print(f"[ingest] {pillar}: {len(tasks)} tasks (direct)")
+                valid_tasks.extend(tasks)
+                continue
+            if pillar == 'supplements':
+                tasks = _read_supplements_from_excel(file_content)
+                print(f"[ingest] {pillar}: {len(tasks)} tasks (direct)")
+                valid_tasks.extend(tasks)
+                continue
             tasks = _extract_sheet_tasks(llm, sheet_text, pillar)
             print(f"[ingest] {pillar}: {len(tasks)} tasks")
             valid_tasks.extend(tasks)
@@ -937,15 +1518,16 @@ def run_ingest(
     prev_start = _wipe_user_data(db, user_id)
     effective_start = rotation_start_date or prev_start
 
-    # 5. Create new Plan row
+    # 5. Create new Plan row (draft until user approves via /activate)
     plan_id = str(uuid.uuid4())
     db.add(Plan(
         id=plan_id,
         name=plan_name,
-        is_active=True,
+        is_active=False,
+        status="draft",
         user_id=user_id,
         rotation_start_date=effective_start,
-        plan_json='{}',
+        plan_json='{}',  # backfilled with the canonical JSON in step 9 below
     ))
     db.flush()
 
@@ -960,6 +1542,12 @@ def run_ingest(
 
     # 8. Pre-generate 30 days of DailyTodo rows
     todos_n = prefill_todos(db, plan_id, user_id)
+
+    # 9. Backfill canonical plan_json from the now-saved rows so uploaded plans
+    #    are editable through the same JSON-as-source-of-truth path as
+    #    questionnaire plans (MODIFY_WORKSHEET_PLAN_FINAL §4.1).
+    plan = db.query(Plan).filter(Plan.id == plan_id).one()
+    plan.plan_json = json.dumps(_plan_to_json(db, plan_id))
 
     db.commit()
 

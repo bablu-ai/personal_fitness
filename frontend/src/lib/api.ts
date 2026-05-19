@@ -16,6 +16,9 @@ export const todosApi = {
   getToday: (): Promise<DailyTodo[]> =>
     client.get('/todos/today').then(r => r.data),
 
+  getNecessarySupplements: (): Promise<DailyTodo[]> =>
+    client.get('/todos/supplements/necessary').then(r => r.data),
+
   getTodaySummary: (): Promise<DaySummary> =>
     client.get(`/todos/${new Date().toISOString().split('T')[0]}/summary`).then(r => r.data),
 
