@@ -24,6 +24,11 @@ from app.schemas.questionnaire import (
     SessionRead,
 )
 from app.services.questionnaire_generator import build_workbook_json
+from app.services.questionnaire_catalog import (
+    QUESTIONNAIRE_VERSION,
+    ensure_questionnaire_questions,
+    get_question_snapshot,
+)
 
 router = APIRouter()
 
@@ -41,8 +46,12 @@ _TOKEN_TTL_HOURS = 24
 )
 def create_session(db: Session = Depends(get_db)) -> SessionRead:
     """Create and return a new questionnaire session."""
+    ensure_questionnaire_questions(db, QUESTIONNAIRE_VERSION)
     # TODO[SECURITY]: use real user_id from JWT (Phase 2)
-    session = QuestionnaireSession(user_id=DEFAULT_USER_ID)
+    session = QuestionnaireSession(
+        user_id=DEFAULT_USER_ID,
+        questionnaire_version=QUESTIONNAIRE_VERSION,
+    )
     db.add(session)
     db.commit()
     db.refresh(session)
@@ -113,6 +122,12 @@ def upsert_answer(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found.")
 
+    question_snapshot = get_question_snapshot(
+        db,
+        body.question_id,
+        session.questionnaire_version,
+    )
+
     # Upsert: find existing answer for this question or create a new one
     existing = (
         db.query(QuestionnaireAnswer)
@@ -125,6 +140,7 @@ def upsert_answer(
 
     if existing:
         existing.answer_json = body.answer_json
+        existing.question_snapshot_id = question_snapshot.id if question_snapshot else None
         existing.section_number = body.section_number
         existing.answered_at = datetime.now(timezone.utc)
         answer = existing
@@ -132,6 +148,7 @@ def upsert_answer(
         answer = QuestionnaireAnswer(
             session_id=session_id,
             question_id=body.question_id,
+            question_snapshot_id=question_snapshot.id if question_snapshot else None,
             section_number=body.section_number,
             answer_json=body.answer_json,
         )

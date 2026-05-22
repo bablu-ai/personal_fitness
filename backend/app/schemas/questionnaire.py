@@ -12,6 +12,7 @@ class SessionRead(BaseModel):
     current_section: int
     completed_count: int
     total_questions: int
+    questionnaire_version: int
     created_at: datetime
     updated_at: datetime
 
@@ -38,6 +39,7 @@ class AnswerUpsert(BaseModel):
 class AnswerRead(BaseModel):
     id: str
     question_id: str
+    question_snapshot_id: str | None = None
     section_number: int
     answer_json: str
     answered_at: datetime

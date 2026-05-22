@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,7 +8,9 @@ from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from dotenv import load_dotenv
 from alembic.config import Config
 from alembic import command
-from app.routers import upload, todos, dashboard, benefits, agent, rotation, screenings, auth, questionnaire, plan_edit
+from app.routers import upload, todos, dashboard, benefits, agent, rotation, screenings, auth, questionnaire, plan_edit, admin
+from app.db.database import SessionLocal
+from app.services.questionnaire_catalog import ensure_questionnaire_questions
 
 load_dotenv(override=True)  # .env values take precedence over system env vars
 
@@ -23,12 +26,32 @@ def _run_migrations() -> None:
 if not os.getenv("TESTING"):
     _run_migrations()
 
+
+def _seed_questionnaire_catalog() -> None:
+    """Persist current question snapshots after migrations have run."""
+    if os.getenv("TESTING"):
+        return
+    db = SessionLocal()
+    try:
+        ensure_questionnaire_questions(db)
+        db.commit()
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _seed_questionnaire_catalog()
+    yield
+
+
 app = FastAPI(
     title="Longevity Daily-Action API",
     version="0.1.0",
     description="Phase 1 POC — open architecture longevity app backend",
     docs_url=None,
     redoc_url=None,
+    lifespan=lifespan,
 )
 
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
@@ -80,6 +103,7 @@ app.include_router(screenings.router, prefix="/api", tags=["screenings"])
 app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(questionnaire.router, prefix="/api", tags=["questionnaire"])
 app.include_router(plan_edit.router, prefix="/api", tags=["plan-edit"])
+app.include_router(admin.router, prefix="/api", tags=["admin"])
 
 
 @app.get("/api/health")

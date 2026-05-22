@@ -205,6 +205,7 @@ class QuestionnaireSession(Base):
     current_section: Mapped[int] = mapped_column(Integer, default=1)
     completed_count: Mapped[int] = mapped_column(Integer, default=0)
     total_questions: Mapped[int] = mapped_column(Integer, default=40)
+    questionnaire_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -227,6 +228,9 @@ class QuestionnaireAnswer(Base):
         String, ForeignKey("questionnaire_sessions.id"), nullable=False
     )
     question_id: Mapped[str] = mapped_column(String, nullable=False)
+    question_snapshot_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("questionnaire_questions.id"), nullable=True
+    )
     section_number: Mapped[int] = mapped_column(Integer, nullable=False)
     answer_json: Mapped[str] = mapped_column(Text, nullable=False)
     answered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -234,6 +238,28 @@ class QuestionnaireAnswer(Base):
     __table_args__ = (UniqueConstraint("session_id", "question_id"),)
 
     session: Mapped["QuestionnaireSession"] = relationship(back_populates="answers")
+    question_snapshot: Mapped["QuestionnaireQuestion | None"] = relationship()
+
+
+class QuestionnaireQuestion(Base):
+    """Immutable snapshot of a questionnaire question for one catalog version."""
+    __tablename__ = "questionnaire_questions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    question_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    section_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    question_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    question_type: Mapped[str] = mapped_column(String, nullable=False)
+    options_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    placeholder: Mapped[str | None] = mapped_column(Text, nullable=True)
+    conditional_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    validation_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("question_id", "version"),)
 
 
 class GeneratedWorkbook(Base):

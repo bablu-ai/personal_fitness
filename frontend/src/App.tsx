@@ -11,6 +11,7 @@ import LoginPage from '@/features/auth/LoginPage'
 import RegisterPage from '@/features/auth/RegisterPage'
 import SessionListPage from '@/features/questionnaire/SessionListPage'
 import QuestionnairePage from '@/features/questionnaire/QuestionnairePage'
+import AdminQuestionnairesPage from '@/features/admin/AdminQuestionnairesPage'
 
 const NAV_ITEMS = [
   { to: '/',          label: 'Today',    Icon: CheckSquare },
@@ -21,10 +22,11 @@ const NAV_ITEMS = [
 ]
 
 // Routes where the bottom nav is hidden (auth pages + active questionnaire flow)
-const NO_NAV_PREFIXES = ['/login', '/register', '/workbook/new', '/workbook/']
+const NO_NAV_PREFIXES = ['/login', '/register', '/workbook/new', '/workbook/', '/admin/']
 
 const AppShell = () => {
   const location = useLocation()
+  const isAdminRoute = location.pathname.startsWith('/admin/')
   const hideNav = NO_NAV_PREFIXES.some(prefix => {
     // Exact match for /workbook (session list shows nav); hide for /workbook/:id
     if (prefix === '/workbook/') {
@@ -34,7 +36,10 @@ const AppShell = () => {
   })
 
   return (
-    <div className="min-h-screen bg-background flex flex-col max-w-2xl lg:max-w-3xl xl:max-w-4xl mx-auto">
+    <div className={cn(
+      'min-h-screen bg-background flex flex-col mx-auto',
+      isAdminRoute ? 'max-w-7xl' : 'max-w-2xl lg:max-w-3xl xl:max-w-4xl',
+    )}>
       {!hideNav && (
         <header className="sticky top-0 z-10 bg-white border-b px-4 py-3">
           <h1 className="text-lg font-semibold text-primary">Longevity Daily</h1>
@@ -58,6 +63,7 @@ const AppShell = () => {
             <Route path="/coach"     element={<AgentChat />} />
             <Route path="/workbook"         element={<SessionListPage />} />
             <Route path="/workbook/:sessionId" element={<QuestionnairePage />} />
+            <Route path="/admin/questionnaires" element={<AdminQuestionnairesPage />} />
           </Route>
         </Routes>
       </main>

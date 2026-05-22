@@ -17,7 +17,7 @@ router = APIRouter()
 _bearer = HTTPBearer()
 
 
-def _get_current_user(
+def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
     db: Session = Depends(get_db),
 ) -> User:
@@ -95,6 +95,9 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse
     tags=["auth"],
     responses={401: {"description": "Missing or invalid token"}},
 )
-def me(current_user: User = Depends(_get_current_user)) -> UserRead:
+def me(current_user: User = Depends(get_current_user)) -> UserRead:
     """Return the authenticated user's profile."""
     return UserRead.model_validate(current_user)
+
+
+_get_current_user = get_current_user
