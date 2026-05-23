@@ -17,6 +17,10 @@ target_metadata = Base.metadata
 # Override the URL from alembic.ini with the one from our app config
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
+# SQLite requires batch mode for ALTER TABLE (it can't modify columns in-place).
+# PostgreSQL and other databases support native ALTER TABLE — batch mode is not needed.
+_is_sqlite = DATABASE_URL.startswith("sqlite")
+
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
@@ -25,7 +29,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        render_as_batch=True,   # SQLite requires batch mode for ALTER TABLE
+        render_as_batch=_is_sqlite,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -41,7 +45,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            render_as_batch=True,   # SQLite requires batch mode for ALTER TABLE
+            render_as_batch=_is_sqlite,
         )
         with context.begin_transaction():
             context.run_migrations()

@@ -19,7 +19,15 @@ if DATABASE_URL.startswith("sqlite"):
         poolclass=NullPool,
     )
 else:
-    engine = create_engine(DATABASE_URL)
+    # PostgreSQL (or any other DB): use a proper connection pool.
+    # pool_pre_ping=True tests connections on checkout so stale connections
+    # (e.g. after a DB restart) are silently replaced instead of erroring.
+    engine = create_engine(
+        DATABASE_URL,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+    )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
