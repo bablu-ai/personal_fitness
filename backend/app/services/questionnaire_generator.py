@@ -37,7 +37,7 @@ def _build_supplements_status(supplements: list) -> dict[str, str]:
 
 def _build_tasks(answers: dict, sex: str) -> list[dict]:
     """Return a hardcoded list of representative daily tasks drawn from the template."""
-    preferred_time = answers.get("q34_preferred_exercise_time", "Flexible")
+    preferred_time = _scalar_str(answers.get("q34_preferred_exercise_time", "Flexible"), "Flexible")
     protein_target = answers.get("_protein_target", 120)
 
     return [
@@ -156,7 +156,7 @@ def _build_tasks(answers: dict, sex: str) -> list[dict]:
 
 def _build_rotation_days(answers: dict) -> list[dict]:
     """Return 4 representative rotation days (Mon–Thu pattern)."""
-    preferred_time = answers.get("q34_preferred_exercise_time", "Flexible")
+    preferred_time = _scalar_str(answers.get("q34_preferred_exercise_time", "Flexible"), "Flexible")
 
     return [
         {
@@ -290,6 +290,21 @@ def _safe_float(value: object, default: float) -> float:
         return default
 
 
+def _scalar_str(value: object, default: str = "") -> str:
+    """Return a plain string from any answer value.
+
+    ConditionalInput answers arrive as {"choice": "...", "detail": "..."}.
+    MultiChoice answers arrive as a list. Everything else is cast with str().
+    """
+    if isinstance(value, dict):
+        return str(value.get("choice") or default)
+    if isinstance(value, list):
+        return ", ".join(str(v) for v in value) if value else default
+    if value is None:
+        return default
+    return str(value)
+
+
 def _parse_age(dob_str: str) -> int:
     """Return age from a date-of-birth string, or 0 if unparseable."""
     if not dob_str:
@@ -326,19 +341,20 @@ def build_workbook_json(session_id: str, db: Session) -> dict:
             answers[row.question_id] = row.answer_json
 
     # Extract key fields with safe defaults
-    name: str = str(answers.get("q1_full_name", ""))
-    dob_str: str = str(answers.get("q2_date_of_birth", ""))
-    sex_raw: str = str(answers.get("q3_sex_at_birth", ""))
+    # _scalar_str handles ConditionalInput dicts {"choice":..,"detail":..} and lists
+    name: str = _scalar_str(answers.get("q1_full_name", ""))
+    dob_str: str = _scalar_str(answers.get("q2_date_of_birth", ""))
+    sex_raw: str = _scalar_str(answers.get("q3_sex_at_birth", ""))
     sex = "M" if sex_raw == "Male" else ("F" if sex_raw == "Female" else sex_raw)
     height_cm = _safe_float(answers.get("q4_height_cm", 170), 170.0)
     weight_kg = _safe_float(answers.get("q5_weight_kg", 75), 75.0)
-    wake_time: str = str(answers.get("q22_wake_time", "06:00"))
-    bed_time: str = str(answers.get("q23_bed_time", "22:00"))
-    dietary_pattern: str = str(answers.get("q16_dietary_pattern", "Omnivore"))
+    wake_time: str = _scalar_str(answers.get("q22_wake_time", "06:00"), "06:00")
+    bed_time: str = _scalar_str(answers.get("q23_bed_time", "22:00"), "22:00")
+    dietary_pattern: str = _scalar_str(answers.get("q16_dietary_pattern", "Omnivore"), "Omnivore")
     supplements_raw = answers.get("q19_current_supplements", [])
     supplements: list = supplements_raw if isinstance(supplements_raw, list) else []
-    preferred_exercise_time: str = str(answers.get("q34_preferred_exercise_time", "Flexible"))
-    cognitive_activities: str = str(answers.get("q26_detail", ""))
+    preferred_exercise_time: str = _scalar_str(answers.get("q34_preferred_exercise_time", "Flexible"), "Flexible")
+    cognitive_activities: str = _scalar_str(answers.get("q26_detail", ""))
 
     # Computed values
     age = _parse_age(dob_str)

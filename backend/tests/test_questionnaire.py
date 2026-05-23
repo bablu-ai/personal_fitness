@@ -292,3 +292,38 @@ def test_build_workbook_json_content(client: TestClient, db_session):
     assert profile["protein_target_g"] == round(80 * 1.6)
     assert wj["supplements_status"]["Creatine"] == "active"
     assert wj["supplements_status"]["Curcumin"] == "review"
+
+
+def test_generate_with_conditional_input_answer(client: TestClient, db_session):
+    """ConditionalInput answers arrive as {"choice": "Evening", "detail": "..."}.
+    The generator must extract the scalar string — not pass the dict to the DB."""
+    sid = _create_session(client)
+    _fill_answers(client, sid)
+
+    # Overwrite q34 with the dict shape that ConditionalInput produces
+    client.put(
+        f"/api/questionnaire/sessions/{sid}/answers",
+        json={
+            "question_id": "q34_preferred_exercise_time",
+            "answer_json": json.dumps({"choice": "Evening", "detail": "after dinner"}),
+            "section_number": 6,
+        },
+    )
+
+    gen_resp = client.post(f"/api/questionnaire/sessions/{sid}/generate")
+    assert gen_resp.status_code == 202, gen_resp.text
+
+    workbook_id = gen_resp.json()["workbook_id"]
+    record = db_session.get(GeneratedWorkbook, workbook_id)
+    wj = json.loads(record.workbook_json)
+
+    # morning_time must be a plain string, not a dict
+    for rd in wj.get("rotation_days", []):
+        assert isinstance(rd.get("morning_time"), (str, type(None))), \
+            f"morning_time must be str, got {type(rd.get('morning_time'))}"
+        assert rd.get("morning_time") == "Evening"
+
+    # timing in tasks must be a plain string too
+    for task in wj.get("tasks", []):
+        assert isinstance(task.get("timing"), (str, type(None))), \
+            f"timing must be str, got {type(task.get('timing'))}"
